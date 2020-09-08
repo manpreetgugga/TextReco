@@ -51,6 +51,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Collections;
 
 
 public class TextScannerActivity extends CameraActivity {
@@ -65,6 +67,12 @@ public class TextScannerActivity extends CameraActivity {
         ScreenOrientation(int rotationRequired) {
             this.rotation = rotationRequired;
         }
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        image = false;
     }
 
     public static final String ARG_SOURCE_SCREEN = "ARG_SOURCE_SCREEN";
@@ -142,6 +150,12 @@ public class TextScannerActivity extends CameraActivity {
         // might get used in Future
         ImageAnalysisConfig imageAnalysisConfig = new ImageAnalysisConfig.Builder().build();
         ImageAnalysis imageAnalysis = new ImageAnalysis(imageAnalysisConfig);
+        imageAnalysis.setAnalyzer(new ImageAnalysis.Analyzer() {
+            @Override
+            public void analyze(ImageProxy image, int rotationDegrees) {
+//                processImage(image, rotationDegrees);
+            }
+        });
         CameraX.unbindAll();
         CameraX.bindToLifecycle(this, preview, imageCapture, imageAnalysis);
         takePicture.setOnClickListener(new OnCameraImageClickListener());
@@ -170,14 +184,28 @@ public class TextScannerActivity extends CameraActivity {
         });
     }
 
+    private Bitmap convertImageProxyToBitmap(ImageProxy image) {
+        ByteBuffer byteBuffer = image.getPlanes()[0].getBuffer();
+        byteBuffer.rewind();
+        byte[] bytes = new byte[byteBuffer.capacity()];
+        byteBuffer.get(bytes);
+        byte[] clonedBytes = bytes.clone();
+        return BitmapFactory.decodeByteArray(clonedBytes, 0, clonedBytes.length);
+    }
+
+    public static Bitmap bitMap = null;
 
     public void handleOnCameraCaptureSuccess(ImageProxy imageProxy) {
-        Bitmap imageCaptured = rotateBitmap(imageToBitmap(imageProxy));
+        processImage(imageProxy, currentScreenOrientation.rotation);
+    }
 
+    Boolean image = false;
+
+    private void processImage(ImageProxy imageProxy, int rotation) {
+        image = true;
         Image mediaImage = imageProxy.getImage();
         if (mediaImage != null) {
-            InputImage image =
-                    InputImage.fromMediaImage(mediaImage, 90);
+            InputImage image = InputImage.fromMediaImage(mediaImage, rotation);
 
             TextRecognizer recognizer = TextRecognition.getClient();
 
@@ -187,14 +215,47 @@ public class TextScannerActivity extends CameraActivity {
                                 @Override
                                 public void onSuccess(Text visionText) {
                                     if (visionText.getText() != null && !visionText.getText().isEmpty()) {
-                                        DialogBix dialoh = new DialogBix(visionText.getText());
-                                        FragmentTransaction ft = getSupportFragmentManager().beginTransaction();
-                                        Fragment prev = getSupportFragmentManager().findFragmentByTag("dialog");
-                                        if (prev != null) {
-                                            ft.remove(prev);
+                                        if (visionText.getText() != null && !visionText.getText().isEmpty()) {
+                                            ArrayList<String> list = new ArrayList();
+                                            for (int i = 0; i < visionText.getTextBlocks().size(); i++) {
+                                                if (visionText.getTextBlocks().get(i).getLines().size() > 1) {
+                                                    for (int j = 0; j < visionText.getTextBlocks().get(i).getLines().size(); j++) {
+                                                        String a;
+                                                        a = (visionText.getTextBlocks().get(i).getLines().get(j).getCornerPoints()[0].y + "" +
+                                                                visionText.getTextBlocks().get(i).getLines().get(j).getCornerPoints()[0].y + "");
+                                                        list.add(a + "__" + visionText.getTextBlocks().get(i).getLines().get(j).getText());
+                                                    }
+                                                    continue;
+                                                } else {
+                                                    String a;
+                                                    a = (visionText.getTextBlocks().get(i).getCornerPoints()[0].y + "" +
+                                                            visionText.getTextBlocks().get(i).getCornerPoints()[0].y + "");
+
+                                                    list.add(a + "__" + visionText.getTextBlocks().get(i).getText());
+                                                    Collections.sort(list);
+                                                }
+                                            }
+                                            Collections.reverse(list);
+                                            ArrayList<String> newList = new ArrayList();
+
+                                            for (int i = 0; i < list.size(); i++) {
+                                                newList.add(list.get(i).split("__")[1]);
+                                            }
+
+                                            String finalText = "";
+                                            for (int i = 0; i < newList.size(); i = i + 2) {
+                                                finalText = finalText + newList.get(i) + "->" + ((i + 1) < newList.size() ? newList.get(i + 1) : "");
+                                                finalText += "\n\n";
+                                            }
+                                            DialogBix dialoh = new DialogBix(finalText);
+                                            FragmentTransaction ft = getSupportFragmentManager().beginTransaction();
+                                            Fragment prev = getSupportFragmentManager().findFragmentByTag("dialog");
+                                            if (prev != null) {
+                                                ft.remove(prev);
+                                            }
+                                            ft.addToBackStack(null);
+                                            dialoh.show(ft, "dialog");
                                         }
-                                        ft.addToBackStack(null);
-                                        dialoh.show(ft, "dialog");
                                     } else {
                                         Toast.makeText(TextScannerActivity.this, "Nothing recognized", Toast.LENGTH_LONG).show();
                                     }
@@ -208,8 +269,6 @@ public class TextScannerActivity extends CameraActivity {
                                             // ...
                                         }
                                     });
-
-
         }
     }
 
@@ -393,6 +452,13 @@ public class TextScannerActivity extends CameraActivity {
         if (mOrientationListener.canDetectOrientation()) {
             mOrientationListener.enable();
         }
+    }
+
+    class TextBloccks {
+        int sortBasisY = 0;
+        int initialYPoint = 0;
+        ArrayList<Text.TextBlock> lines = new ArrayList();
+        String whloleText = "";
     }
 }
 

@@ -11,7 +11,8 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         takePicture.setOnClickListener {
-         startActivity(Intent(this,TextScannerActivity::class.java))
+            TextScannerActivity.bitMap = null
+            startActivity(Intent(this, TextScannerActivity::class.java))
         }
 
     }
